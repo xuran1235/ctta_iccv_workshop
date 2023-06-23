@@ -117,6 +117,7 @@ work_dirs_train/
 mmseg/.mim
 *.jpg
 *.json
+Test_on_videos_1x_val/
 
 # Pytorch
 *.pth

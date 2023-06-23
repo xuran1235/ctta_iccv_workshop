@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node=8  tools/train.py local_configs/segformer/B5/segformer.b5.1280x800.shift.160k.py --work-dir ./work_dirs_train/segformer_shift --gpus 8 --launcher pytorch

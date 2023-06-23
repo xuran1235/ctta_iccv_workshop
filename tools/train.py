@@ -157,7 +157,8 @@ def main():
         datasets,
         cfg,
         distributed=distributed,
-        validate=(not args.no_validate),
+        validate=False,
+        # validate=(not args.no_validate),########临时改成 false
         timestamp=timestamp,
         meta=meta)
 
