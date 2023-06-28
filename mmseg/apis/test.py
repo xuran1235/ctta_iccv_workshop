@@ -303,7 +303,7 @@ def single_gpu_test(model,
     seq_name = dataset.img_dir.split('/')[-1]
     prog_bar = mmcv.ProgressBar(len(dataset))
     # out_dir = "./gt/"+seq_name# str(datetime.datetime.now())
-    out_dir = "./baseline/"+seq_name# str(datetime.datetime.now())
+    # out_dir = "./baseline/"+seq_name# str(datetime.datetime.now())
     for i, data in enumerate(data_loader):
         gt = data['gt_semantic_seg'][0].to(data['img'][0]).to(torch.long)
         del data['gt_semantic_seg']
@@ -379,11 +379,17 @@ def multi_gpu_test(model,
     results = []
     dataset = data_loader.dataset
     rank, world_size = get_dist_info()
+    # print("000000",len(dataset))
     if rank == 0:
         prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
+        gt = data['gt_semantic_seg'][0].to(data['img'][0]).to(torch.long)
+        del data['gt_semantic_seg']
         with torch.no_grad():
             result = model(return_loss=False, rescale=True, **data)
+            # print(result)
+        # if type(result) == tuple:
+        #     result = result[0]
 
         if isinstance(result, list):
             if efficient_test:

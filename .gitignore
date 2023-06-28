@@ -118,6 +118,16 @@ mmseg/.mim
 *.jpg
 *.json
 Test_on_videos_1x_val/
+CoTTA_on_iter_latest/
+Tent_on_iter_latest/
+Test_on_iter_120000/
+Test_on_iter_132000/
+Test_on_iter_140000/
+Test_on_iter_152000/
+Test_on_iter_40000/
+Test_on_iter_80000/
+Test_on_iter_latest/
+temp/
 
 # Pytorch
 *.pth

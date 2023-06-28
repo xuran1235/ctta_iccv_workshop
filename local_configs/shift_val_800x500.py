@@ -6,7 +6,7 @@ _base_ = [
 
 # dataset settings
 dataset_type = 'ShiftDataset'
-data_split_type = 'videos_1x_val'
+data_split_type = 'videos_1x_val_segformer_temp'
 data_root = '/data/SHIFT/continuous/videos/1x'
 csv_root = data_root + '/val/front/seq.csv'
 img_norm_cfg = dict(

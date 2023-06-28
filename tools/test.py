@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument('checkpoint', help='checkpoint file')
     parser.add_argument(
         '--aug-test', action='store_true', help='Use Flip and Multi scale aug')
-    parser.add_argument('--out', default='./res.pkl', help='output result file in pickle format')
+    parser.add_argument('--out', default='results_pkl/res.pkl', help='output result file in pickle format')
     parser.add_argument(
         '--format-only',
         action='store_true',
@@ -60,6 +60,11 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--data_split_type', type=str, default=None)
+    '''===================YSQ add split========='''
+    parser.add_argument('--test_index', type=int, default=1)
+    parser.add_argument('--test_seq_len', type=int, default=15)
+    parser.add_argument('--ctta_type', type=str, default='Test')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -129,7 +134,13 @@ def main():
         globals()["cfg.data.test{}".format(i)].img_dir = os.path.join(cfg.data.test.img_dir,seq)
         globals()["cfg.data.test{}".format(i)].ann_dir = os.path.join(cfg.data.test.ann_dir,seq)
         seq_list.append(globals()["cfg.data.test{}".format(i)])
-        
+    '''============Split seq list start=============='''
+    if (args.test_index+1)*args.test_seq_len>len(seq_list):
+        seq_list = seq_list[args.test_index*args.test_seq_len : ]
+    else:
+        seq_list = seq_list[args.test_index*args.test_seq_len : (args.test_index+1)*args.test_seq_len]
+    
+    '''============Split seq list end================'''
     datasets = [build_dataset(seq) for seq in seq_list]#, build_dataset(cfg.data.test1), build_dataset(cfg.data.test2),build_dataset(cfg.data.test3)]
     data_loaders = [build_dataloader(
         dataset,
@@ -143,7 +154,7 @@ def main():
     # build the model and load checkpoint
     cfg.model.train_cfg = None
     model = build_segmentor(cfg.model, test_cfg=cfg.get('test_cfg'))
-    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
+    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu', strict=True)
     model.CLASSES = checkpoint['meta']['CLASSES']
     model.PALETTE = checkpoint['meta']['PALETTE']
 
@@ -167,11 +178,14 @@ def main():
                 dataset.format_results(outputs, **kwargs)
             if args.eval:
                 _, eval_res,_ = dataset.evaluate(outputs, args.eval, **kwargs)
-                out_dir = './Test_on_{}/source_model_eval/'.format(cfg.data_split_type)
+                if args.data_split_type == None:
+                    out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, cfg.data_split_type + "latest")
+                else:
+                    out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, args.data_split_type)
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir + 'res')
                 mmcv.dump(eval_res, out_dir + 'res/{}.json'.format(seq_name), indent=4)
-    res_process(out_dir,cfg.csv_root)
+    # res_process(out_dir,cfg.csv_root)
 
 
 if __name__ == '__main__':
