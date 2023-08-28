@@ -1,4 +1,0 @@
-CUDA_VISIBLE_DEVICES=0  python  tools/test.py  local_configs/segformer/B5/segformer.b5.1280x800.shift.160k.py /home/ChallengeB/SHIFT-Continuous_Test_Time_Adaptation/work_dirs_train/segformer_shift/iter_132000.pth --data_split_type iter_132000 &
-CUDA_VISIBLE_DEVICES=0  python  tools/test.py  local_configs/segformer/B5/segformer.b5.1280x800.shift.160k.py /home/ChallengeB/SHIFT-Continuous_Test_Time_Adaptation/work_dirs_train/segformer_shift/iter_140000.pth --data_split_type iter_140000 &
-CUDA_VISIBLE_DEVICES=1  python  tools/test.py  local_configs/segformer/B5/segformer.b5.1280x800.shift.160k.py /home/ChallengeB/SHIFT-Continuous_Test_Time_Adaptation/work_dirs_train/segformer_shift/iter_152000.pth --data_split_type iter_152000 
-#CUDA_VISIBLE_DEVICES=1  python  tools/test.py  local_configs/segformer/B5/segformer.b5.1280x800.shift.160k.py /home/ChallengeB/SHIFT-Continuous_Test_Time_Adaptation/work_dirs_train/segformer_shift/latest.pth --data_split_type iter_latest

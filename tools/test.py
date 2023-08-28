@@ -95,6 +95,7 @@ def main():
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
         torch.backends.cudnn.benchmark = True
+    print(args.aug_test)
     if args.aug_test:
         if cfg.data.test.type == 'CityscapesDataset':
             # hard code index
@@ -158,7 +159,7 @@ def main():
     model.CLASSES = checkpoint['meta']['CLASSES']
     model.PALETTE = checkpoint['meta']['PALETTE']
 
-    efficient_test = True #False
+    efficient_test = False #False
     if args.eval_options is not None:
         efficient_test = args.eval_options.get('efficient_test', False)
 
@@ -177,14 +178,16 @@ def main():
             if args.format_only:
                 dataset.format_results(outputs, **kwargs)
             if args.eval:
-                _, eval_res,_ = dataset.evaluate(outputs, args.eval, **kwargs)
+                _, eval_res,_, drop_miou = dataset.evaluate(outputs, args.eval, **kwargs)#drop_miou
                 if args.data_split_type == None:
                     out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, cfg.data_split_type + "latest")
                 else:
                     out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, args.data_split_type)
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir + 'res')
+                    os.makedirs(out_dir + 'drop')
                 mmcv.dump(eval_res, out_dir + 'res/{}.json'.format(seq_name), indent=4)
+                mmcv.dump(drop_miou, out_dir + 'drop/{}.json'.format(seq_name), indent=4)#drop_miou
     # res_process(out_dir,cfg.csv_root)
 
 

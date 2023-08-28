@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch --nproc_per_node=8  tools/train.py local_configs/mask2former/mask2former_swin-l_shiftdataset.py --work-dir work_dirs_train/mask2former_shift --gpus 8 --launcher pytorch

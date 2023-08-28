@@ -59,7 +59,42 @@ class ShiftDataset(CustomDataset):
         Returns:
             list[dict]: All image info of dataset.
         """
+        # if 'train' in img_dir:
+        #     seq = '/data/SHIFT/discrete/images/train/front/seq.csv'
+        # else:
+        #     seq = '/data/SHIFT/discrete/images/val/front/seq.csv'
+        # train_seq = []
+        # with open(seq, 'r') as file:
+        #     reader = csv.reader(file)
+        #     next(reader) # skip header row
+        #     for row in reader:
+        #         if "clear,daytime" in ','.join(row):
+        #             train_seq.append(row[0])
+        #             # break
+        # print(train_seq)
 
+        # img_infos = []
+        # if split is not None:
+        #     with open(split) as f:
+        #         for line in f:
+        #             img_name = line.strip()
+        #             img_info = dict(filename=img_name + img_suffix)
+        #             if ann_dir is not None:
+        #                 seg_map = img_name + seg_map_suffix
+        #                 img_info['ann'] = dict(seg_map=seg_map)
+        #             img_infos.append(img_info)
+        # else:
+        #     for img in mmcv.scandir(img_dir, img_suffix, recursive=True):
+        #         img_info = dict(filename=img)
+        #         if img.split('/')[0] in train_seq:
+        #             if ann_dir is not None:
+        #                 seg_map = img.replace(img_suffix, seg_map_suffix)
+        #                 img_info['ann'] = dict(seg_map=seg_map)
+        #             img_infos.append(img_info)
+        # # img_infos = img_infos[0:10]        
+        # print_log(f'Loaded {len(img_infos)} images', logger=get_root_logger())
+        # img_infos_sorted = sorted(img_infos, key=lambda x: x['filename'])
+        # return img_infos_sorted 
         img_infos = []
         if split is not None:
             with open(split) as f:

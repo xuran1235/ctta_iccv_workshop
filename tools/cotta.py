@@ -12,7 +12,9 @@ from mmseg.apis import multi_gpu_test, single_gpu_test, single_gpu_cotta
 from mmseg.datasets import build_dataloader, build_dataset
 from mmseg.models import build_segmentor
 from IPython import embed
-from res_process import res_process
+# from res_process import res_process
+from mmseg.models.backbones.vida import *
+
 
 def create_ema_model(model):
     ema_model = deepcopy(model)#get_model(args.model)(num_classes=num_classes)
@@ -90,6 +92,11 @@ def parse_args():
     parser.add_argument('--test_index', type=int, default=1)
     parser.add_argument('--test_seq_len', type=int, default=15)
     parser.add_argument('--ctta_type', type=str, default='Test')
+    ###########vida
+    parser.add_argument('--vida_r1', type=int, default='1')
+    parser.add_argument('--vida_r2', type=int, default='128')
+    parser.add_argument('--vida_lr', type=float, default='1e-7')
+    parser.add_argument('--model_lr', type=float, default='1e-6')
 
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
@@ -124,6 +131,7 @@ def main():
 
     # cfg.data.test.pipeline[1].img_ratios = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
     cfg.data.test.pipeline[2].img_ratios = [ 1.0, 1.25, 1.5, 1.75, 2.0]
+    # cfg.data.test.pipeline[1].img_ratios = [ 1.0, 1.25, 1.5, 1.75, 2.0]
     
 
     cfg.model.pretrained = None
@@ -141,7 +149,6 @@ def main():
     print(cfg)
     seq_info_path = cfg.csv_root
     seq_id_list = []
-
     # select seq
     with open(seq_info_path, 'r') as file:
         reader = csv.reader(file)
@@ -175,7 +182,7 @@ def main():
 
     # build the model and load checkpoint
     cfg.model.train_cfg = None
-    efficient_test = True #False
+    efficient_test = False #False
     if args.eval_options is not None:
         efficient_test = args.eval_options.get('efficient_test', False)
 
@@ -186,10 +193,12 @@ def main():
         model.CLASSES = checkpoint['meta']['CLASSES']
         model.PALETTE = checkpoint['meta']['PALETTE']
         model = MMDataParallel(model, device_ids=[0])
+        lora_params, lora_names = inject_trainable_Vida(model = model, target_replace_module = ["CrossAttention", "Attention"], r = args.vida_r1, r2 = args.vida_r2)
+        model.cuda()
         anchor = deepcopy(model.state_dict())
         anchor_model = deepcopy(model)
         ema_model = create_ema_model(model)
-        outputs = single_gpu_cotta(model, data_loader, args.show, args.show_dir,
+        outputs = single_gpu_cotta(args, model, data_loader, args.show, args.show_dir,
                                 efficient_test, anchor, ema_model, anchor_model)
 
         rank, _ = get_dist_info()
@@ -201,14 +210,16 @@ def main():
             if args.format_only:
                 dataset.format_results(outputs, **kwargs)
             if args.eval:
-                _, eval_res,_ = dataset.evaluate(outputs, args.eval, **kwargs)
+                _, eval_res,_, drop_miou = dataset.evaluate(outputs, args.eval, **kwargs)#drop_miou
                 if args.data_split_type == None:
                     out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, cfg.data_split_type + "latest")
                 else:
                     out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, args.data_split_type)
                 if not os.path.exists(out_dir):
                     os.makedirs(out_dir + 'res')
+                    os.makedirs(out_dir + 'drop')
                 mmcv.dump(eval_res, out_dir + 'res/{}.json'.format(seq_name), indent=4)
+                mmcv.dump(drop_miou, out_dir + 'drop/{}.json'.format(seq_name), indent=4)#drop_miou
     # res_process(out_dir,cfg.csv_root)
   
 

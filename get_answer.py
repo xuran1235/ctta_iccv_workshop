@@ -65,6 +65,7 @@ def parse_args():
     parser.add_argument('--test_index', type=int, default=1)
     parser.add_argument('--test_seq_len', type=int, default=15)
     parser.add_argument('--ctta_type', type=str, default='Test')
+    parser.add_argument('--e', action="store_true")
 
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
@@ -131,8 +132,10 @@ def main():
         out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, cfg.data_split_type + "latest")
     else:
         out_dir = './{}_on_{}/source_model_eval/'.format(args.ctta_type, args.data_split_type)
-
-    res_process(out_dir,cfg.csv_root)
+    if args.e:
+        res_process(out_dir,cfg.eval_csv_root)
+    else:
+        res_process(out_dir,cfg.csv_root)
 
 
 if __name__ == '__main__':

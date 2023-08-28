@@ -7,8 +7,9 @@ _base_ = [
 # dataset settings
 dataset_type = 'ShiftDataset'
 data_split_type = 'videos_1x_train'
-data_root = '/home/yufeng.zwb/fire/SHIFT/continuous/videos/1x'
-csv_root = data_root + '/train/front/seq.csv'
+# data_root = '/data/SHIFT/discrete/images/'
+data_root = '/data/SHIFT/continuous/videos/1x/'
+csv_root = data_root + 'val/front/seq.csv'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 crop_size = (1280, 800)
@@ -52,14 +53,14 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        img_dir='train/front/img',
-        ann_dir='train/front/semseg',
+        img_dir='val/front/img',
+        ann_dir='val/front/semseg',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        img_dir='train/front/img/',
-        ann_dir='train/front/semseg/',
+        img_dir='val/front/img/',
+        ann_dir='val/front/semseg/',
         pipeline=test_pipeline))
 
 evaluation = dict(interval=4000, metric='mIoU')

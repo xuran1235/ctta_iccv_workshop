@@ -26,6 +26,8 @@ import random
 import torch.nn as nn
 from PIL import Image 
 
+from mmseg.models.backbones.vida import *
+
 
 IMG_MEAN = np.array((104.00698793, 116.66876762, 122.67891434), dtype=np.float32)
 import pdb
@@ -66,7 +68,9 @@ def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     """Entropy of softmax distribution from logits."""
     return -(x.softmax(1) * x.log_softmax(1)).sum(1)
 
-def single_gpu_cotta(model,
+def single_gpu_cotta(
+                    args,
+                    model,
                     data_loader,
                     show=False,
                     out_dir=None,
@@ -95,14 +99,26 @@ def single_gpu_cotta(model,
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
     param_list = []
-    out_dir = "./cotta/"+str(datetime.datetime.now())
+    lora_parm_lst = []
+    if out_dir:
+        out_dir = out_dir
+    else:   
+        out_dir = "./cotta/"+str(datetime.datetime.now())
     for name, param in model.named_parameters():
-        if param.requires_grad:
+        # if param.requires_grad:
+        if 'Vida_' not in name:
             param_list.append(param)
             print(name)
+        elif param.requires_grad and ("Vida_" in name):
+            lora_parm_lst.append(param)
+            print (name)
         else:
             param.requires_grad=False
-    optimizer = torch.optim.Adam(param_list, lr=0.00006/8, betas=(0.9, 0.999))#Batchsize=1 now, was 8 during cityscapes training
+    # optimizer = torch.optim.Adam(param_list, lr=0.00006/8, betas=(0.9, 0.999))#Batchsize=1 now, was 8 during cityscapes training
+    optimizer = torch.optim.Adam([{"params": lora_parm_lst, "lr": args.vida_lr},
+                            {"params": param_list, "lr": args.model_lr}],
+                            lr=1e-5, betas=(0.9, 0.999))
+    
     for i, data in enumerate(data_loader):
         model.eval()
         ema_model.eval()
@@ -120,7 +136,7 @@ def single_gpu_cotta(model,
             mask = (probs_[0][0] > 0.69).astype(np.int64) # 0.74 was the 5% quantile for cityscapes, therefore we use 0.69 here
             result = [(mask*preds[0][0] + (1.-mask)*result[0]).astype(np.int64)]
             weight = 1.
-        if show or out_dir:
+        if show and out_dir:
             img_tensor = data['img'][0]
             img_metas = data['img_metas'][0].data[0]
             imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
@@ -133,10 +149,10 @@ def single_gpu_cotta(model,
                 img_show = mmcv.imresize(img_show, (ori_w, ori_h))
 
                 if out_dir:
-                    out_file = osp.join(out_dir, img_meta['ori_filename'])
+                    # out_file = osp.join(out_dir, img_meta['ori_filename'])
+                    out_file = osp.join(out_dir, img_meta['filename'].split('/')[-2], img_meta['ori_filename'])
                 else:
                     out_file = None
-
                 model.module.show_result(
                     img_show,
                     result,
@@ -173,6 +189,238 @@ def single_gpu_cotta(model,
             prog_bar.update()
     return results
 
+def single_gpu_cotta_vida(
+                    args,
+                    model,
+                    data_loader,
+                    show=False,
+                    out_dir=None,
+                    efficient_test=False,
+                    anchor=None,
+                    ema_model=None,
+                    anchor_model=None):
+    """Test with single GPU.
+
+    Args:
+        model (nn.Module): Model to be tested.
+        data_loader (utils.data.Dataloader): Pytorch data loader.
+        show (bool): Whether show results during infernece. Default: False.
+        out_dir (str, optional): If specified, the results will be dumped into
+            the directory to save output results.
+        efficient_test (bool): Whether save the results as local numpy files to
+            save CPU memory during evaluation. Default: False.
+
+    Returns:  
+        list: The prediction results.
+    """
+
+    model.eval()
+    anchor_model.eval()
+    results = []
+    dataset = data_loader.dataset
+    prog_bar = mmcv.ProgressBar(len(dataset))
+    param_list = []
+    lora_parm_lst = []
+    if out_dir:
+        out_dir = out_dir
+    else:   
+        out_dir = "./cotta/"+str(datetime.datetime.now())
+    for name, param in model.named_parameters():
+        # if param.requires_grad:
+        if 'Vida_' not in name:
+            param_list.append(param)
+            print(name)
+        elif param.requires_grad and ("Vida_" in name):
+            lora_parm_lst.append(param)
+            print (name)
+        else:
+            param.requires_grad=False
+    # optimizer = torch.optim.Adam(param_list, lr=0.00006/8, betas=(0.9, 0.999))#Batchsize=1 now, was 8 during cityscapes training
+    optimizer = torch.optim.Adam([{"params": lora_parm_lst, "lr": args.vida_lr},
+                            {"params": param_list, "lr": args.model_lr}],
+                            lr=1e-5, betas=(0.9, 0.999))
+    
+    for i, data in enumerate(data_loader):
+        model.eval()
+        ema_model.eval()
+        anchor_model.eval()
+
+        gt = data['gt_semantic_seg'][0].to(data['img'][0]).to(torch.long)
+        del data['gt_semantic_seg']
+        
+        with torch.no_grad():
+            # acc_origin_,_ = ema_model.forward(return_loss=True, img=data['img'][0], img_metas=data['img_metas'][0].data[0], gt_semantic_seg=gt)
+            
+            
+            result, probs, preds = ema_model(return_loss=False, **data)
+            _, probs_, _ = anchor_model(return_loss=False, **data)
+            mask = (probs_[0][0] > 0.69).astype(np.int64) # 0.74 was the 5% quantile for cityscapes, therefore we use 0.69 here
+            result = [(mask*preds[0][0] + (1.-mask)*result[0]).astype(np.int64)]
+            weight = 1.
+        if show and out_dir:
+            img_tensor = data['img'][0]
+            img_metas = data['img_metas'][0].data[0]
+            imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
+            assert len(imgs) == len(img_metas)
+            for img, img_meta in zip(imgs, img_metas):
+                h, w, _ = img_meta['img_shape']
+                img_show = img[:h, :w, :]
+
+                ori_h, ori_w = img_meta['ori_shape'][:-1]
+                img_show = mmcv.imresize(img_show, (ori_w, ori_h))
+
+                if out_dir:
+                    # out_file = osp.join(out_dir, img_meta['ori_filename'])
+                    out_file = osp.join(out_dir, img_meta['filename'].split('/')[-2], img_meta['ori_filename'])
+                else:
+                    out_file = None
+                model.module.show_result(
+                    img_show,
+                    result,
+                    palette=dataset.PALETTE,
+                    show=show,
+                    out_file=out_file)
+        if isinstance(result, list):
+            if len(data['img'])==14:
+                img_id = 4 #The default size without flip 
+            else:
+                img_id = 0
+            loss = model.forward(return_loss=True, img=data['img'][img_id], img_metas=data['img_metas'][img_id].data[0], gt_semantic_seg=torch.from_numpy(result[0]).cuda().unsqueeze(0).unsqueeze(0))
+            if efficient_test:
+                result = [np2tmp(_) for _ in result]
+            results.extend(result)
+        else:
+            if efficient_test:
+                result = np2tmp(result)
+            results.append(result)
+
+        torch.mean(weight*loss["decode.loss_seg"]).backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        ema_model = update_ema_variables(ema_model = ema_model, model = model, alpha_teacher=0.999)
+        for nm, m  in model.named_modules():
+            for npp, p in m.named_parameters():
+                if npp in ['weight', 'bias'] and p.requires_grad:
+                    mask = (torch.rand(p.shape)<0.01).float().cuda() 
+                    with torch.no_grad():
+                        p.data = anchor[f"{nm}.{npp}"] * mask + p * (1.-mask)
+
+        batch_size = data['img'][0].size(0)
+        for _ in range(batch_size):
+            prog_bar.update()
+    return results
+
+def single_gpu_cotta_test(model,
+                    data_loader,
+                    show=False,
+                    out_dir=None,
+                    efficient_test=False,
+                    anchor=None,
+                    ema_model=None,
+                    anchor_model=None):
+    """Test with single GPU.
+
+    Args:
+        model (nn.Module): Model to be tested.
+        data_loader (utils.data.Dataloader): Pytorch data loader.
+        show (bool): Whether show results during infernece. Default: False.
+        out_dir (str, optional): If specified, the results will be dumped into
+            the directory to save output results.
+        efficient_test (bool): Whether save the results as local numpy files to
+            save CPU memory during evaluation. Default: False.
+
+    Returns:  
+        list: The prediction results.
+    """
+
+    model.eval()
+    anchor_model.eval()
+    results = []
+    dataset = data_loader.dataset
+    prog_bar = mmcv.ProgressBar(len(dataset))
+    param_list = []
+    if out_dir:
+        out_dir = out_dir
+    else:   
+        out_dir = "./cotta/"+str(datetime.datetime.now())
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            param_list.append(param)
+            print(name)
+        else:
+            param.requires_grad=False
+    optimizer = torch.optim.Adam(param_list, lr=0.00006/8, betas=(0.9, 0.999))#Batchsize=1 now, was 8 during cityscapes training
+    for i, data in enumerate(data_loader):
+        model.eval()
+        ema_model.eval()
+        anchor_model.eval()
+
+        # gt = data['gt_semantic_seg'][0].to(data['img'][0]).to(torch.long)
+        # del data['gt_semantic_seg']
+        
+        with torch.no_grad():
+            # acc_origin_,_ = ema_model.forward(return_loss=True, img=data['img'][0], img_metas=data['img_metas'][0].data[0], gt_semantic_seg=gt)
+            
+            
+            result, probs, preds = ema_model(return_loss=False, **data)
+            _, probs_, _ = anchor_model(return_loss=False, **data)
+            mask = (probs_[0][0] > 0.69).astype(np.int64) # 0.74 was the 5% quantile for cityscapes, therefore we use 0.69 here
+            result = [(mask*preds[0][0] + (1.-mask)*result[0]).astype(np.int64)]
+            weight = 1.
+        if show and out_dir:
+            img_tensor = data['img'][0]
+            img_metas = data['img_metas'][0].data[0]
+            imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
+            assert len(imgs) == len(img_metas)
+            for img, img_meta in zip(imgs, img_metas):
+                h, w, _ = img_meta['img_shape']
+                img_show = img[:h, :w, :]
+
+                ori_h, ori_w = img_meta['ori_shape'][:-1]
+                img_show = mmcv.imresize(img_show, (ori_w, ori_h))
+
+                if out_dir:
+                    # out_file = osp.join(out_dir, img_meta['ori_filename'])
+                    out_file = osp.join(out_dir, img_meta['filename'].split('/')[-2], img_meta['ori_filename'].split('_')[0]+'_semseg_front.jpg')
+                else:
+                    out_file = None
+                if int(img_meta['ori_filename'].split('_')[0]) % 10 == 0:
+                    # print(img_meta['ori_filename'])
+                    model.module.show_result(
+                        img_show,
+                        result,
+                        palette=dataset.PALETTE,
+                        show=show,
+                        out_file=out_file)
+        if isinstance(result, list):
+            if len(data['img'])==14:
+                img_id = 4 #The default size without flip 
+            else:
+                img_id = 0
+            loss = model.forward(return_loss=True, img=data['img'][img_id], img_metas=data['img_metas'][img_id].data[0], gt_semantic_seg=torch.from_numpy(result[0]).cuda().unsqueeze(0).unsqueeze(0))
+            if efficient_test:
+                result = [np2tmp(_) for _ in result]
+            results.extend(result)
+        else:
+            if efficient_test:
+                result = np2tmp(result)
+            results.append(result)
+
+        torch.mean(weight*loss["decode.loss_seg"]).backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        ema_model = update_ema_variables(ema_model = ema_model, model = model, alpha_teacher=0.999)
+        for nm, m  in model.named_modules():
+            for npp, p in m.named_parameters():
+                if npp in ['weight', 'bias'] and p.requires_grad:
+                    mask = (torch.rand(p.shape)<0.01).float().cuda() 
+                    with torch.no_grad():
+                        p.data = anchor[f"{nm}.{npp}"] * mask + p * (1.-mask)
+
+        batch_size = data['img'][0].size(0)
+        for _ in range(batch_size):
+            prog_bar.update()
+    return results
 
 
 def single_gpu_tent(model,
@@ -275,6 +523,109 @@ def single_gpu_tent(model,
             prog_bar.update()
     return results
 
+def single_gpu_tent_test(model,
+                    data_loader,
+                    show=False,
+                    out_dir=None,
+                    efficient_test=False):
+    """Test with single GPU.
+
+    Args:
+        model (nn.Module): Model to be tested.
+        data_loader (utils.data.Dataloader): Pytorch data loader.
+        show (bool): Whether show results during infernece. Default: False.
+        out_dir (str, optional): If specified, the results will be dumped into
+            the directory to save output results.
+        efficient_test (bool): Whether save the results as local numpy files to
+            save CPU memory during evaluation. Default: False.
+
+    Returns:
+        list: The prediction results.
+    """
+
+    model.eval()
+    origin_model = deepcopy(model)
+    results = []
+    dataset = data_loader.dataset
+    prog_bar = mmcv.ProgressBar(len(dataset))
+    seq_name = dataset.img_dir.split('/')[-1]
+    param_list = []
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            if param.requires_grad and ("norm" in name or "bn" in name):
+                param_list.append(param)
+                print (name)
+            else:
+                param.requires_grad=False
+    optimizer = torch.optim.Adam(param_list, lr=0.00006/8, betas=(0.9, 0.999))
+    delta_sum = 0
+    if out_dir:
+        out_dir = out_dir
+    else:   
+        out_dir = "./tent/"+str(datetime.datetime.now())
+    for i, data in enumerate(data_loader):
+
+        # gt = data['gt_semantic_seg'][0].to(data['img'][0]).to(torch.long)
+        # del data['gt_semantic_seg']
+
+        with torch.no_grad():
+            # acc_origin = origin_model.forward(return_loss=True, img=data['img'][0], img_metas=data['img_metas'][0].data[0], gt_semantic_seg=gt)
+            # acc_adaption = model.forward(return_loss=True, img=data['img'][0], img_metas=data['img_metas'][0].data[0], gt_semantic_seg=gt)
+            # acc = round(acc_adaption['decode.acc_seg'].item(),2)
+            # acc_pre = round(acc_origin['decode.acc_seg'].item(),2)
+            # acc_delta = round(acc - acc_pre,2)
+            # delta_sum = round(delta_sum + acc_delta,2)
+            # print(seq_name,'delta_sum',delta_sum,'acc_delta:',acc_delta, 'acc_origin:',acc_pre,'loss_adaption:',acc)
+        
+            result,_ = model(return_loss=False, **data)
+
+                
+        if show and out_dir:
+            img_tensor = data['img'][0]
+            img_metas = data['img_metas'][0].data[0]
+            imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
+            assert len(imgs) == len(img_metas)
+            for img, img_meta in zip(imgs, img_metas):
+                h, w, _ = img_meta['img_shape']
+                img_show = img[:h, :w, :]
+
+                ori_h, ori_w = img_meta['ori_shape'][:-1]
+                img_show = mmcv.imresize(img_show, (ori_w, ori_h))
+
+                if out_dir:
+                    out_file = osp.join(out_dir, img_meta['filename'].split('/')[-2], img_meta['ori_filename'].split('_')[0]+'_semseg_front.png')
+                else:
+                    out_file = None
+                if int(img_meta['ori_filename'].split('_')[0]) % 10 == 0:
+                    model.module.show_result(
+                        img_show,
+                        result,
+                        palette=dataset.PALETTE,
+                        show=show,
+                        out_file=out_file)
+
+        if isinstance(result, list):
+            loss = model.forward(return_loss=True, img=data['img'][0], img_metas=data['img_metas'][0].data[0], gt_semantic_seg=torch.from_numpy(np.stack(result)).cuda().unsqueeze(1))
+            if efficient_test:
+                result = [np2tmp(_) for _ in result]
+            results.extend(result)
+        else:
+            loss = model(return_loss=True, img=data['img'][0], img_metas=data['img_metas'][0].data[0], gt_semantic_seg=result)
+            if efficient_test:
+                result = np2tmp(result)
+            results.append(result)
+
+
+        torch.mean(loss["decode.loss_seg"]).backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+
+
+        batch_size = data['img'][0].size(0)
+        for _ in range(batch_size):
+            prog_bar.update()
+    return results
 
 
 def single_gpu_test(model,
@@ -302,9 +653,11 @@ def single_gpu_test(model,
     dataset = data_loader.dataset
     seq_name = dataset.img_dir.split('/')[-1]
     prog_bar = mmcv.ProgressBar(len(dataset))
+    out_dir = out_dir
     # out_dir = "./gt/"+seq_name# str(datetime.datetime.now())
     # out_dir = "./baseline/"+seq_name# str(datetime.datetime.now())
     for i, data in enumerate(data_loader):
+        # print(data['img'][0].shape)
         gt = data['gt_semantic_seg'][0].to(data['img'][0]).to(torch.long)
         del data['gt_semantic_seg']
         with torch.no_grad():
@@ -348,6 +701,79 @@ def single_gpu_test(model,
             prog_bar.update()
     return results
 
+def single_gpu_test_test(model,
+                    data_loader,
+                    show=False,
+                    out_dir=None,
+                    efficient_test=False):
+    """Test with single GPU.
+
+    Args:
+        model (nn.Module): Model to be tested.
+        data_loader (utils.data.Dataloader): Pytorch data loader.
+        show (bool): Whether show results during infernece. Default: False.
+        out_dir (str, optional): If specified, the results will be dumped into
+            the directory to save output results.
+        efficient_test (bool): Whether save the results as local numpy files to
+            save CPU memory during evaluation. Default: False.
+
+    Returns:
+        list: The prediction results.
+    """
+    
+    model.eval()
+    results = []
+    dataset = data_loader.dataset
+    seq_name = dataset.img_dir.split('/')[-1]
+    prog_bar = mmcv.ProgressBar(len(dataset))
+    out_dir = out_dir
+    for i, data in enumerate(data_loader):
+        # print(data['img'][0].shape)
+        # gt = data['gt_semantic_seg'][0].to(data['img'][0]).to(torch.long)
+        # del data['gt_semantic_seg']
+        with torch.no_grad():
+            result,_ = model(return_loss=False, **data)
+        if show or out_dir:
+            img_tensor = data['img'][0]
+            img_metas = data['img_metas'][0].data[0]
+            imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
+            assert len(imgs) == len(img_metas)
+
+            for img, img_meta in zip(imgs, img_metas):
+                h, w, _ = img_meta['img_shape']
+                img_show = img[:h, :w, :]
+
+                ori_h, ori_w = img_meta['ori_shape'][:-1]
+                img_show = mmcv.imresize(img_show, (ori_w, ori_h))
+
+                if out_dir:
+                    if not os.path.exists(osp.join(out_dir, img_meta['filename'].split('/')[-2])):
+                        os.makedirs(osp.join(out_dir, img_meta['filename'].split('/')[-2]))
+                    out_file = osp.join(out_dir, img_meta['filename'].split('/')[-2], img_meta['ori_filename'].split('_')[0]+'_semseg_front.png')
+                else:
+                    out_file = None
+
+                if int(img_meta['ori_filename'].split('_')[0]) % 10 == 0:
+                    model.module.show_result(
+                        img_show,
+                        result,
+                        palette=dataset.PALETTE,
+                        show=show,
+                        out_file=out_file)
+
+        if isinstance(result, list):
+            if efficient_test:
+                result = [np2tmp(_) for _ in result]
+            results.extend(result)
+        else:
+            if efficient_test:
+                result = np2tmp(result)
+            results.append(result)
+
+        batch_size = data['img'][0].size(0)
+        for _ in range(batch_size):
+            prog_bar.update()
+    return results
 
 def multi_gpu_test(model,
                    data_loader,

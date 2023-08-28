@@ -146,7 +146,7 @@ def main():
 
     # build the model and load checkpoint
     cfg.model.train_cfg = None
-    efficient_test = True #False
+    efficient_test = False #False
     if args.eval_options is not None:
         efficient_test = args.eval_options.get('efficient_test', False)
 

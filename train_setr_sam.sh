@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3 python -m torch.distributed.launch --nproc_per_node=4 --master_port 29700  tools/train.py local_configs/setr/SETR_SAM_PUP.py --work-dir /opt/data/work_dirs_train/setrsam_clear_daytime --gpus 4 --launcher pytorch

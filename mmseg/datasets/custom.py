@@ -1,6 +1,7 @@
 import os
 import os.path as osp
 from functools import reduce
+import copy
 
 import mmcv
 import numpy as np
@@ -330,6 +331,10 @@ class CustomDataset(Dataset):
             raise KeyError('metric {} is not supported'.format(metric))
         eval_results = {}
         gt_seg_maps = self.get_gt_seg_maps(efficient_test)
+        source_results = copy.deepcopy(results[0:21]) #dropmiou
+        source_gt_seg_maps = copy.deepcopy(gt_seg_maps[0:21])   #dropmiou
+        target_results = copy.deepcopy(results[180:201]) #dropmiou
+        target_gt_seg_maps = copy.deepcopy(gt_seg_maps[180:201])   #dropmiou        
         if self.CLASSES is None:
             num_classes = len(
                 reduce(np.union1d, [np.unique(_) for _ in gt_seg_maps]))
@@ -340,6 +345,22 @@ class CustomDataset(Dataset):
         ret_metrics, ret_metrics_seq = eval_metrics(
             results,
             gt_seg_maps,
+            num_classes,
+            self.ignore_index,
+            metric,
+            label_map=self.label_map,
+            reduce_zero_label=self.reduce_zero_label)
+        source_ret_metrics, source_ret_metrics_seq = eval_metrics(    #dropmiou
+            source_results,
+            source_gt_seg_maps,
+            num_classes,
+            self.ignore_index,
+            metric,
+            label_map=self.label_map,
+            reduce_zero_label=self.reduce_zero_label)
+        target_ret_metrics, target_ret_metrics_seq = eval_metrics(    #dropmiou
+            target_results,
+            target_gt_seg_maps,
             num_classes,
             self.ignore_index,
             metric,
@@ -371,6 +392,15 @@ class CustomDataset(Dataset):
             np.round(np.nanmean(ret_metric) * 100, 2)
             for ret_metric in ret_metrics
         ]
+        source_ret_metrics_mean = [      #dropmiou
+            np.round(np.nanmean(source_ret_metric) * 100, 2)
+            for source_ret_metric in source_ret_metrics
+        ]
+        target_ret_metrics_mean = [      #dropmiou
+            np.round(np.nanmean(target_ret_metric) * 100, 2)
+            for target_ret_metric in target_ret_metrics
+        ]
+        drop_miou = float(source_ret_metrics_mean[2]) - float(target_ret_metrics_mean[2])  
         #['Scope', 'mIoU', 'mAcc', 'aAcc']
         summary_table_data.append(['global'] + ret_metrics_mean[2:] +
                                   [ret_metrics_mean[1]] +
@@ -388,4 +418,4 @@ class CustomDataset(Dataset):
         if mmcv.is_list_of(results, str):
             for file_name in results:
                 os.remove(file_name)
-        return eval_results, class_table_data, class_table_data_seq
+        return eval_results, class_table_data, class_table_data_seq, drop_miou

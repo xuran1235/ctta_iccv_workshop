@@ -9,6 +9,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from mmcv.runner import auto_fp16
+from PIL import Image
 
 
 class BaseSegmentor(nn.Module):
@@ -234,8 +235,9 @@ class BaseSegmentor(nn.Module):
             img (Tensor): Only if not `show` or `out_file`
         """
         img = mmcv.imread(img)
-        img = img.copy()
         seg = result[0]
+        #seg = result
+        img = img.copy()
         if palette is None:
             if self.PALETTE is None:
                 palette = np.random.randint(
@@ -248,12 +250,14 @@ class BaseSegmentor(nn.Module):
         assert len(palette.shape) == 2
         color_seg = np.zeros((seg.shape[0], seg.shape[1], 3), dtype=np.uint8)
         for label, color in enumerate(palette):
-            color_seg[seg == label, :] = color
+            # color_seg[seg== label, :] = color
+            color_seg[seg == label, :] = [int(label),0,0]
         # convert to BGR
-        color_seg = color_seg[..., ::-1]
+        # color_seg = color_seg[..., ::-1]
 
         # from IPython import embed; embed(header='debug vis')
-        img = img * 0.5 + color_seg * 0.5
+        # img = img * 0.5 + color_seg * 0.5
+        img = color_seg
         img = img.astype(np.uint8)
         # if out_file specified, do not show image in window
         if out_file is not None:
@@ -262,7 +266,9 @@ class BaseSegmentor(nn.Module):
         if show:
             mmcv.imshow(img, win_name, wait_time)
         if out_file is not None:
-            mmcv.imwrite(img, out_file)
+            # mmcv.imwrite(img, out_file)
+            image = Image.fromarray(img)
+            image.save(out_file)
 
         if not (show or out_file):
             warnings.warn('show==False and out_file is not specified, only '
