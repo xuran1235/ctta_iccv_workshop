@@ -118,7 +118,7 @@ mmseg/.mim
 *.jpg
 *.json
 segformer*
-setr*
+*on_iter_latest/
 VIS*
 deeplabv3*
 Test*
